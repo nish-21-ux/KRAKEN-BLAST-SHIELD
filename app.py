@@ -490,4 +490,265 @@ with tab4:
                 f"<b>{w['Service']}</b> is the largest blast radius: losing it drops "
                 f"{w[raw_key]}% of traffic unprotected and {w[prot_key]}% with <b>{strat_name}</b>.</div>",
                 unsafe_allow_html=True)
+    
+
+# ============================================================
+# KRAKEN // BLAST SHIELD
+# INTELLIGENT RECOVERY STRATEGY RECOMMENDER
+# Connected to the existing cascade simulation
+# ============================================================
+
+st.markdown("---")
+st.markdown("## 🛡️ LIVE RECOVERY STRATEGY CENTER")
+st.caption(
+    "Recommendations generated from the current digital-twin "
+    "simulation, fault configuration, and resilience metrics."
+)
+
+# Evaluate every available strategy against the SAME fault.
+recovery_results = {}
+
+for strategy_name, strategy_config in STRATS.items():
+    simulation = simulate(topo, fault, strategy_config)
+    metrics = summarize(simulation["hist"])
+
+    recovery_results[strategy_name] = {
+        "metrics": metrics,
+        "events": simulation["events"],
+        "config": strategy_config,
+    }
+
+# Rank strategies by traffic loss, worst success, recovery time,
+# and peak latency. These metrics come from the existing simulator.
+def recovery_rank(item):
+    name, result = item
+    metrics = result["metrics"]
+
+    return (
+        metrics["loss"],
+        -metrics["worst"],
+        metrics["recovery"]
+        if metrics["recovery"] is not None
+        else float("inf"),
+        metrics["peak_lat"],
+    )
+
+recommended_name, recommended = min(
+    recovery_results.items(),
+    key=recovery_rank,
+)
+
+recommended_metrics = recommended["metrics"]
+current_metrics = S
+
+# Map the chosen strategy to its protective mechanisms.
+strategy_actions = {
+    NONE: [
+        (
+            "1. Investigate the failure",
+            "Inspect the affected service, dependency health, "
+            "latency, and retry amplification."
+        ),
+        (
+            "2. Reduce further impact",
+            "Evaluate an approved protective strategy before "
+            "the dependency failure spreads."
+        ),
+        (
+            "3. Validate recovery",
+            "Confirm traffic success and service health "
+            "before considering the incident resolved."
+        ),
+    ],
+    "Circuit breaking": [
+        (
+            "1. Isolate the failing dependency",
+            "Use circuit breakers to stop repeated calls to "
+            "an unhealthy dependency."
+        ),
+        (
+            "2. Protect upstream services",
+            "Use the configured fallback behavior where "
+            "appropriate and monitor request failures."
+        ),
+        (
+            "3. Verify dependency recovery",
+            "Confirm dependency health before allowing "
+            "normal traffic to resume."
+        ),
+    ],
+    "Auto-scaling": [
+        (
+            "1. Identify overloaded services",
+            "Inspect utilization, offered load, and "
+            "latency in the dependency graph."
+        ),
+        (
+            "2. Increase capacity",
+            "Use approved autoscaling policies to add "
+            "capacity when sustained overload is detected."
+        ),
+        (
+            "3. Verify stability",
+            "Check whether additional capacity improves "
+            "traffic success and reduces latency."
+        ),
+    ],
+    "Hot failover": [
+        (
+            "1. Confirm service failure",
+            "Validate the affected service's health and "
+            "the availability of its standby."
+        ),
+        (
+            "2. Promote the standby",
+            "Use an approved failover procedure when "
+            "the primary service meets failure criteria."
+        ),
+        (
+            "3. Validate the replacement",
+            "Verify availability and downstream dependencies "
+            "after the standby is promoted."
+        ),
+    ],
+    SHIELD: [
+        (
+            "1. Break the failure cascade",
+            "Use circuit breaking to reduce retry amplification "
+            "from unhealthy dependencies."
+        ),
+        (
+            "2. Scale overloaded services",
+            "Use autoscaling to add capacity when the simulated "
+            "load exceeds service capacity."
+        ),
+        (
+            "3. Fail over unhealthy services",
+            "Promote a standby when the configured failover "
+            "criteria are met."
+        ),
+        (
+            "4. Verify end-to-end recovery",
+            "Check traffic success, latency, and degraded "
+            "services throughout the dependency graph."
+        ),
+    ],
+}
+
+# Headline incident context.
+fault_label = {
+    "crash": "Hard crash",
+    "brownout": "Partial service failure",
+    "surge": "Traffic surge",
+}.get(fault_kind, fault_kind)
+
+st.markdown(
+    f"**Detected simulation scenario:** {fault_label}  \n"
+    f"**Affected service:** {target}"
+)
+
+# Current strategy vs recommended strategy.
+c1, c2, c3 = st.columns(3)
+
+c1.metric(
+    "RECOMMENDED STRATEGY",
+    recommended_name,
+)
+
+c2.metric(
+    "PREDICTED TRAFFIC LOST",
+    f"{recommended_metrics['loss']:.1%}",
+    delta=(
+        f"{(S['loss'] - recommended_metrics['loss']) * 100:+.1f} "
+        "percentage points vs selected"
+    ),
+    delta_color="inverse",
+)
+
+c3.metric(
+    "PREDICTED RECOVERY",
+    (
+        "Not within simulation"
+        if recommended_metrics["recovery"] is None
+        else f"{recommended_metrics['recovery']} s"
+    ),
+)
+
+# Explain why this strategy was selected.
+st.markdown("### 🧠 Why KRAKEN recommends this strategy")
+
+st.markdown(
+    f"""
+    <div class="verdict">
+      <p class="micro-tag" style="color:#22c55e;">
+        [ DIGITAL TWIN RECOMMENDATION ]
+      </p>
+      <b>{recommended_name}</b> produced the lowest average
+      post-fault traffic loss among the configured strategies
+      for this simulated scenario.
+
+      <br><br>
+      Predicted traffic lost:
+      <b>{recommended_metrics['loss']:.1%}</b>
+
+      <br>
+      Worst traffic success:
+      <b>{recommended_metrics['worst']:.1%}</b>
+
+      <br>
+      Peak entry latency:
+      <b>{recommended_metrics['peak_lat']:.0f} ms</b>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Actionable recovery checklist.
+st.markdown("### 📋 Recommended recovery action plan")
+
+for i, (title, description) in enumerate(
+    strategy_actions[recommended_name]
+):
+    with st.container(border=True):
+        st.markdown(f"**{title}**")
+        st.write(description)
+        st.checkbox(
+            "Mark as completed",
+            key=f"kraken_recovery_{recommended_name}_{i}",
+        )
+
+# Compare all strategies so the recommendation is explainable.
+st.markdown("### 📊 Strategy comparison")
+
+comparison_rows = []
+
+for name, result in recovery_results.items():
+    metrics = result["metrics"]
+
+    comparison_rows.append({
+        "Strategy": name,
+        "Traffic lost (%)": round(metrics["loss"] * 100, 1),
+        "Worst success (%)": round(metrics["worst"] * 100, 1),
+        "Recovery time": (
+            "Not recovered"
+            if metrics["recovery"] is None
+            else f"{metrics['recovery']} s"
+        ),
+        "Peak latency (ms)": round(metrics["peak_lat"]),
+        "Recommended": "YES" if name == recommended_name else "",
+    })
+
+st.dataframe(
+    pd.DataFrame(comparison_rows),
+    hide_index=True,
+    use_container_width=True,
+)
+
+st.caption(
+    "Simulation-based recommendation, not live production telemetry. "
+    "Results update when the Streamlit app reruns. Validate recovery "
+    "actions with an authorized operator before applying them to "
+    "real infrastructure."
+)
+
 
